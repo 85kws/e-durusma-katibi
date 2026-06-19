@@ -26,6 +26,13 @@ SIM_BASLIK = PENCERE_BASLIGI  # "UYAP Mevzuat Simulator"
 # Enter'a basılacak sesli komutlar.
 KOMUTLAR_ENTER = {"yeni paragraf", "yeni satır", "yeni satir", "alt satır", "alt satir"}
 
+# "Geri al" — son yazılanı geri alır (Ctrl+Z). Tam eşleşme (cümle ortasında tetiklenmez).
+KOMUTLAR_GERIAL = {"geri al", "geri", "sil", "bunu sil", "onu sil", "yok sil",
+                   "son yazdığını sil", "son yazdigini sil", "iptal", "iptal et"}
+
+# "Kelime sil" — son kelimeyi siler (Ctrl+Backspace).
+KOMUTLAR_KELIMESIL = {"kelime sil", "kelimeyi sil", "son kelimeyi sil", "son kelime sil"}
+
 # Pencere geçişi: sesli anahtar -> pencere başlığında aranacak metin.
 # SIRA önemli: "mevzuat" "uyap"tan ÖNCE (uyap mevzuat -> simülatör penceresi).
 PENCERE_HEDEF = [
@@ -52,6 +59,12 @@ def komut_coz(metin: str):
     # 1) Enter komutları
     if s in KOMUTLAR_ENTER:
         return ("enter", None)
+
+    # 1b) Geri al / sil komutları (tam eşleşme — düz metni bozmaz)
+    if s in KOMUTLAR_GERIAL:
+        return ("geri_al", None)
+    if s in KOMUTLAR_KELIMESIL:
+        return ("kelime_sil", None)
 
     # 2) Mevzuat çekme (en spesifik): kanun adı + "madde N" + eylem kelimesi
     kod = ad_to_kod(s)
@@ -90,6 +103,28 @@ def enter_gonder():
         kb.press(Key.enter); kb.release(Key.enter)
     else:
         subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+
+
+def geri_al():
+    """Son yazılanı geri al (Ctrl+Z)."""
+    if sys.platform.startswith("win"):
+        from pynput.keyboard import Key, Controller
+        kb = Controller()
+        kb.press(Key.ctrl); kb.press("z"); kb.release("z"); kb.release(Key.ctrl)
+    else:
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+z"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+
+
+def kelime_sil():
+    """Son kelimeyi sil (Ctrl+Backspace)."""
+    if sys.platform.startswith("win"):
+        from pynput.keyboard import Key, Controller
+        kb = Controller()
+        kb.press(Key.ctrl); kb.press(Key.backspace); kb.release(Key.backspace); kb.release(Key.ctrl)
+    else:
+        subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+BackSpace"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
 
 

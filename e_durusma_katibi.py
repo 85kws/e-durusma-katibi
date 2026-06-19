@@ -31,16 +31,28 @@ import komutlar
 ORNEKLEME = 16000
 KANAL = 1
 BLOK = 0.10
-SESSIZLIK_ESIGI = 0.010
-SESSIZLIK_SURESI = 0.80
+SESSIZLIK_ESIGI = 0.020       # bu RMS altı = sessizlik (mikrofona göre ayarlanır)
+SESSIZLIK_SURESI = 0.70       # konuşma sonrası bu kadar sn sessizlik = cümle bitti
+MAX_SUR = 6.0                 # EN GEÇ bu kadar saniyede işle (uzun birikmeyi önler)
 DIL = "tr"
-MODEL_BOYUTU = "small"        # yavaş PC için "base"
+# Model: doğruluk/gürültü ↔ hız dengesi. medium (güçlü PC için) — small'dan daha doğru, gürültüde iyi.
+MODEL_BOYUTU = "medium"
 HUKUKI_PROMPT = ("Hukuki dikte. Terimler: beraat, beraatine, sanık, müşteki, "
                  "davacı vekili, davalı, Cumhuriyet Savcısı, gereği düşünüldü, "
                  "tahliye, mahkumiyet, tazminat.")
 
 # Programı açış şifresi (baban değiştirebilir). 3 yanlışta program kapanır.
 SIFRE = "1234"
+
+
+def _model_kaynagi():
+    """exe (frozen) ise içine gömülü 'model' klasörü; değilse boyut adı (indirir)."""
+    if getattr(sys, "frozen", False):
+        taban = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        gomulu = os.path.join(taban, "model")
+        if os.path.isdir(gomulu):
+            return gomulu
+    return MODEL_BOYUTU
 
 
 def input_cihazlari():
@@ -55,12 +67,39 @@ def input_cihazlari():
     return liste
 
 
+def _cihaz_default_sr(device):
+    """Cihazın desteklediği örnekleme hızı (16kHz açılmazsa kullanılır)."""
+    try:
+        info = sd.query_devices(device, "input")
+        return int(info.get("default_samplerate", 44100)) or 44100
+    except Exception:
+        return 44100
+
+
+def _resample16k(ses, sr):
+    """Sesi 16kHz'e indir (Whisper 16kHz ister)."""
+    if sr == ORNEKLEME:
+        return ses
+    n = int(len(ses) * ORNEKLEME / sr)
+    if n <= 1:
+        return ses
+    return np.interp(np.linspace(0, len(ses), n, endpoint=False),
+                     np.arange(len(ses)), ses).astype(np.float32)
+
+
 def mikrofon_test(device=None, sure=2.0):
-    """Seçili mikrofondan 'sure' sn kaydeder, ses seviyesini (RMS) döndürür."""
-    kayit = sd.rec(int(sure * ORNEKLEME), samplerate=ORNEKLEME, channels=1,
-                   dtype="float32", device=device)
-    sd.wait()
-    return float(np.sqrt(np.mean(np.square(kayit))))
+    """Seçili mikrofondan kaydeder, ses seviyesini (RMS) döndürür. 16kHz olmazsa cihaz hızını dener."""
+    son = None
+    for sr in (ORNEKLEME, _cihaz_default_sr(device)):
+        try:
+            kayit = sd.rec(int(sure * sr), samplerate=sr, channels=1,
+                           dtype="float32", device=device)
+            sd.wait()
+            return float(np.sqrt(np.mean(np.square(kayit))))
+        except Exception as e:
+            son = e
+            continue
+    raise RuntimeError(f"mikrofon açılamadı: {son}")
 
 
 class DikteMotoru:
@@ -73,6 +112,7 @@ class DikteMotoru:
         self._calisiyor = False
         self._kuyruk = queue.Queue()
         self._stream = None
+        self.sr = ORNEKLEME
 
     def model_yukle(self):
         if self.model is None:
@@ -85,11 +125,21 @@ class DikteMotoru:
         self._calisiyor = True
         self._kuyruk = queue.Queue()
         threading.Thread(target=self._dongu, daemon=True).start()
-        self._stream = sd.InputStream(samplerate=ORNEKLEME, channels=KANAL, dtype="float32",
-                                      blocksize=int(ORNEKLEME * BLOK), device=device,
-                                      callback=self._cb)
-        self._stream.start()
-        self.on_durum("Dinleniyor 🎙️ — konuşun")
+        son = None
+        for sr in (ORNEKLEME, _cihaz_default_sr(device)):
+            try:
+                self.sr = sr
+                self._stream = sd.InputStream(samplerate=sr, channels=KANAL, dtype="float32",
+                                              blocksize=int(sr * BLOK), device=device,
+                                              callback=self._cb)
+                self._stream.start()
+                self.on_durum("Dinleniyor 🎙️ — konuşun")
+                return
+            except Exception as e:
+                son = e
+                continue
+        self._calisiyor = False
+        self.on_durum(f"❌ Mikrofon açılamadı: {son}")
 
     def durdur(self):
         self._calisiyor = False
@@ -103,11 +153,14 @@ class DikteMotoru:
 
     def _cb(self, indata, frames, t, status):
         if self._calisiyor:
-            self._kuyruk.put(indata.copy())
+            # Geri-basınç: işleme yetişemezse eski sesi düşür (sonsuz gecikmeyi önler).
+            if self._kuyruk.qsize() < int(3 * MAX_SUR / BLOK):
+                self._kuyruk.put(indata.copy())
 
     def _dongu(self):
         biriken, sessiz, konusuldu = [], 0, False
         gereken = max(1, int(SESSIZLIK_SURESI / BLOK))
+        max_blok = max(gereken + 1, int(MAX_SUR / BLOK))
         while self._calisiyor:
             try:
                 blok = self._kuyruk.get(timeout=0.5)
@@ -118,21 +171,31 @@ class DikteMotoru:
                 konusuldu = True; sessiz = 0; biriken.append(blok)
             elif konusuldu:
                 sessiz += 1; biriken.append(blok)
-                if sessiz >= gereken:
-                    ses = np.concatenate(biriken).flatten().astype(np.float32)
-                    biriken, sessiz, konusuldu = [], 0, False
-                    self._isle(ses)
-                    del ses
+            # İşle: yeterli sessizlik VEYA en fazla MAX_SUR doldu (uzun birikmeyi önler)
+            if konusuldu and (sessiz >= gereken or len(biriken) >= max_blok):
+                ses = np.concatenate(biriken).flatten().astype(np.float32)
+                biriken, sessiz, konusuldu = [], 0, False
+                self._isle(ses)
+                del ses
 
     def _isle(self, ses):
-        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=1,
-                                        vad_filter=False, initial_prompt=HUKUKI_PROMPT)
+        if self.sr != ORNEKLEME:
+            ses = _resample16k(ses, self.sr)
+        # vad_filter=True: Silero VAD ile gürültü/sessizlik elenir (gürültülü ortamda daha iyi).
+        # condition_on_previous_text=False: tekrar/halüsinasyonu önler.
+        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=5,
+                                        vad_filter=True, condition_on_previous_text=False,
+                                        initial_prompt=HUKUKI_PROMPT)
         metin = "".join(s.text for s in segs).strip()
         if not metin:
             return
         tip, veri = komutlar.komut_coz(metin)
         if tip == "enter":
             komutlar.enter_gonder(); self.on_metin("↵ [yeni paragraf]")
+        elif tip == "geri_al":
+            komutlar.geri_al(); self.on_metin("↶ [geri al]")
+        elif tip == "kelime_sil":
+            komutlar.kelime_sil(); self.on_metin("⌫ [kelime sil]")
         elif tip == "pencere":
             ok = komutlar.pencereye_gec(veri)
             self.on_metin(f"🪟 [{veri}{'' if ok else ' — bulunamadı'}]")
