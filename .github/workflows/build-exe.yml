@@ -1,0 +1,46 @@
+name: build-exe
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Kütüphaneleri kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ana uygulama EXE (E-DurusmaKatibi)
+        run: >
+          pyinstaller --noconfirm --onefile --noconsole --name "E-DurusmaKatibi"
+          --collect-all faster_whisper
+          --collect-all ctranslate2
+          --collect-all onnxruntime
+          --collect-all av
+          --collect-all tokenizers
+          e_durusma_katibi.py
+
+      - name: Mevzuat penceresi EXE (UYAP_Mevzuat)
+        run: >
+          pyinstaller --noconfirm --onefile --noconsole --name "UYAP_Mevzuat"
+          adim2_mevzuat_simulator.py
+
+      - name: NOTLAR'ı dist'e kopyala
+        run: copy NOTLAR_WINDOWS.md dist\
+
+      - name: EXE'leri yükle (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: E-DurusmaKatibi-Windows
+          path: dist/*
+          retention-days: 30

@@ -1,0 +1,8 @@
+# E-Duruşma Katibi — WINDOWS Python bağımlılıkları
+faster-whisper
+sounddevice
+numpy
+pyperclip
+pynput
+pygetwindow
+pyinstaller
