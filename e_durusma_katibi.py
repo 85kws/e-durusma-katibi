@@ -37,8 +37,8 @@ SESSIZLIK_ESIGI = 0.020       # bu RMS altı = sessizlik (mikrofona göre ayarla
 SESSIZLIK_SURESI = 0.45       # konuşma sonrası bu kadar sn sessizlik = öbek bitti (kısa = hızlı tepki)
 MAX_SUR = 3.0                 # EN GEÇ bu kadar saniyede işle (hız için kısa)
 DIL = "tr"
-# HIZ için "base" (CPU'da gerçek-zamana en yakın). Doğruluk için "small"/"medium" (ama yavaşlar).
-MODEL_BOYUTU = "base"
+# "small" = iyi denge (güçlü PC'de hızlı + doğru). Çok yavaşsa "base", çok güçlüyse "medium".
+MODEL_BOYUTU = "small"
 HUKUKI_PROMPT = ("Hukuki dikte. Terimler: beraat, beraatine, sanık, müşteki, "
                  "davacı vekili, davalı, Cumhuriyet Savcısı, gereği düşünüldü, "
                  "tahliye, mahkumiyet, tazminat.")
@@ -119,8 +119,11 @@ class DikteMotoru:
 
     def model_yukle(self):
         if self.model is None:
-            self.on_durum("Model yükleniyor... (ilk sefer biraz sürer)")
-            self.model = WhisperModel(MODEL_BOYUTU, device="cpu", compute_type="int8")
+            self.on_durum("Model yükleniyor...")
+            # _model_kaynagi(): exe'de GÖMÜLÜ model klasörü (offline, indirmez).
+            # cpu_threads: tüm çekirdekleri kullan (CPU'da hız için kritik).
+            self.model = WhisperModel(_model_kaynagi(), device="cpu", compute_type="int8",
+                                      cpu_threads=max(4, (os.cpu_count() or 4)), num_workers=1)
             self.on_durum("Model hazır.")
 
     def baslat(self, device=None):
@@ -186,7 +189,7 @@ class DikteMotoru:
             ses = _resample16k(ses, self.sr)
         # vad_filter=True: Silero VAD ile gürültü/sessizlik elenir (gürültülü ortamda daha iyi).
         # condition_on_previous_text=False: tekrar/halüsinasyonu önler.
-        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=1,
+        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=5,
                                         vad_filter=True, condition_on_previous_text=False,
                                         initial_prompt=HUKUKI_PROMPT)
         metin = "".join(s.text for s in segs).strip()

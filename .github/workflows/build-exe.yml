@@ -22,7 +22,7 @@ jobs:
           pip install huggingface_hub
 
       - name: Whisper modelini indir (exe'ye gömmek icin - offline)
-        run: python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-base', local_dir='model')"
+        run: python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-small', local_dir='model')"
 
       - name: Ana uygulama EXE (model gomulu, onedir)
         run: >
