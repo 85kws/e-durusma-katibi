@@ -349,11 +349,12 @@ def main():
 
     # 4) Durum + son metin
     alt = ttk.Frame(kok, padding=(14, 4)); alt.pack(fill="both", expand=True)
-    motor.on_durum = lambda s: durum_var.set(s)
+    # Tkinter thread-safe degil: engine thread'inden gelen guncellemeleri ana thread'e tasi.
+    motor.on_durum = lambda s: kok.after(0, lambda: durum_var.set(s))
     ttk.Label(alt, textvariable=durum_var, foreground="#1a5").pack(anchor="w")
     ttk.Label(alt, text="Son işlenen:").pack(anchor="w", pady=(8, 0))
     son_metin = tk.StringVar(value="")
-    motor.on_metin = lambda t: son_metin.set(t)
+    motor.on_metin = lambda t: kok.after(0, lambda: son_metin.set(t))
     ttk.Label(alt, textvariable=son_metin, wraplength=520, foreground="#333").pack(anchor="w")
 
     ttk.Label(kok, text="İpucu: Word/editör açıkken Başlat'a bas, oraya yazılır. "
