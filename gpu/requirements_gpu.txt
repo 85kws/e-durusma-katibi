@@ -1,0 +1,10 @@
+# E-Duruşma Katibi — GPU (NVIDIA) sürümü
+# Kaynaktan çalıştırma için. NVIDIA sürücüsü güncel olmalı (CUDA 12 uyumlu).
+faster-whisper
+sounddevice
+numpy
+pyperclip
+pynput
+pygetwindow
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

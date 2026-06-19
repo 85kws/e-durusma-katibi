@@ -37,8 +37,8 @@ SESSIZLIK_ESIGI = 0.018       # bu RMS altı = sessizlik (mikrofona göre ayarla
 SESSIZLIK_SURESI = 0.80       # konuşma sonrası bu kadar sn sessizlik = CÜMLE bitti (tam cümle yakala)
 MAX_SUR = 15.0                # güvenlik tavanı (cümle çok uzarsa); normalde duraklamada işler
 DIL = "tr"
-# "small" = iyi denge (güçlü PC'de hızlı + doğru). Çok yavaşsa "base", çok güçlüyse "medium".
-MODEL_BOYUTU = "small"
+# GPU varsa large-v3 (en zeki + instant + offline). GPU yoksa otomatik CPU'ya düşer (yavaş).
+MODEL_BOYUTU = "large-v3"
 HUKUKI_PROMPT = ("Hukuki dikte. Terimler: beraat, beraatine, sanık, müşteki, "
                  "davacı vekili, davalı, Cumhuriyet Savcısı, gereği düşünüldü, "
                  "tahliye, mahkumiyet, tazminat.")
@@ -118,13 +118,28 @@ class DikteMotoru:
         self.mevzuat_handler = None   # GUI ayarlar; mevzuat komutunu uygular
 
     def model_yukle(self):
-        if self.model is None:
-            self.on_durum("Model yükleniyor...")
-            # _model_kaynagi(): exe'de GÖMÜLÜ model klasörü (offline, indirmez).
-            # cpu_threads: tüm çekirdekleri kullan (CPU'da hız için kritik).
-            self.model = WhisperModel(_model_kaynagi(), device="cpu", compute_type="int8",
-                                      cpu_threads=max(4, (os.cpu_count() or 4)), num_workers=1)
-            self.on_durum("Model hazır.")
+        if self.model is not None:
+            return
+        kaynak = _model_kaynagi()   # exe'de GÖMÜLÜ model (offline)
+        # GPU (NVIDIA) varsa cuda+float16 = instant. Yoksa CPU+int8 (yavaş, ama çalışır).
+        gpu = False
+        try:
+            import ctranslate2
+            gpu = ctranslate2.get_cuda_device_count() > 0
+        except Exception:
+            gpu = False
+        if gpu:
+            self.on_durum("Model yükleniyor (GPU)...")
+            try:
+                self.model = WhisperModel(kaynak, device="cuda", compute_type="float16")
+                self.on_durum("Model hazır (GPU ⚡).")
+                return
+            except Exception as e:
+                self.on_durum(f"GPU açılamadı, CPU'ya geçiliyor: {e}")
+        self.on_durum("Model yükleniyor (CPU)...")
+        self.model = WhisperModel(kaynak, device="cpu", compute_type="int8",
+                                  cpu_threads=max(4, (os.cpu_count() or 4)), num_workers=1)
+        self.on_durum("Model hazır (CPU).")
 
     def baslat(self, device=None):
         self.model_yukle()
