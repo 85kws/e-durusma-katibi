@@ -101,17 +101,18 @@ def ad_to_kod(metin: str):
     return None
 
 
-def main():
-    import socket
-    import threading
+def arayuz_kur(pencere):
+    """Mevzuat arayüzünü verilen pencereye (Tk veya Toplevel) kurar.
+    'ac(kod, madde)' fonksiyonu döndürür: kanunu+maddeyi seçer, kopyalar, öne getirir.
+    Hem tek-exe (ana uygulama içinden Toplevel) hem standalone main() kullanır."""
     import tkinter as tk
     from tkinter import ttk
 
     state = {"kod": None, "madde": None}
 
-    kok = tk.Tk()
-    kok.title(PENCERE_BASLIGI)          # SABİT başlık — ana program bununla bulur
-    kok.geometry("780x480")
+    pencere.title(PENCERE_BASLIGI)      # SABİT başlık
+    pencere.geometry("780x480")
+    kok = pencere                        # aşağıdaki kod 'kok' adını kullanıyor
 
     def metni_goster(metin):
         metin_alani.config(state="normal")
@@ -194,9 +195,9 @@ def main():
     durum = tk.StringVar(value="Bir kanun seçin (örn: Türk Borçlar Kanunu).")
     ttk.Label(kok, textvariable=durum, relief="sunken", anchor="w", padding=4).pack(fill="x")
 
-    # --- Ana programdan gelen "şu maddeyi aç" komutunu işleyen görsel navigasyon ---
+    # --- "şu maddeyi aç" görsel navigasyon (ana uygulama içinden veya loopback çağırır) ---
     def disaridan_ac(kod, madde):
-        """Loopback'ten gelen istek: kanunu+maddeyi seç, kopyala, pencereyi öne getir."""
+        """Kanunu+maddeyi seç, kopyala, pencereyi öne getir (hakim açılan maddeyi görür)."""
         kodlar = list(KUTUPHANE.keys())
         if kod not in kodlar:
             return
@@ -214,25 +215,35 @@ def main():
         madde_liste.see(j)
         madde_secildi()
         maddeyi_kopyala()
-        # Görsel: pencereyi öne getir (hakim açılan maddeyi görür)
-        kok.deiconify()
-        kok.lift()
-        kok.attributes("-topmost", True)
-        kok.after(900, lambda: kok.attributes("-topmost", False))
+        # Görsel: pencereyi öne getir
         try:
+            kok.deiconify(); kok.lift()
+            kok.attributes("-topmost", True)
+            kok.after(900, lambda: kok.attributes("-topmost", False))
             kok.focus_force()
         except Exception:
             pass
 
+    return disaridan_ac
+
+
+def main():
+    """Standalone (2 ayrı .exe modu): kendi penceresi + 127.0.0.1 loopback kontrol sunucusu."""
+    import socket
+    import threading
+    import tkinter as tk
+
+    kok = tk.Tk()
+    ac = arayuz_kur(kok)
+
     def kontrol_sunucusu():
-        """127.0.0.1 loopback dinleyici. Mesaj: 'AC|<kod>|<madde>'. Sadece yerel."""
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             srv.bind(("127.0.0.1", KONTROL_PORT))
             srv.listen(5)
         except Exception:
-            return  # port doluysa sessizce vazgeç (UI yine elle çalışır)
+            return
         while True:
             try:
                 conn, _ = srv.accept()
@@ -241,14 +252,11 @@ def main():
                 if veri.startswith("AC|"):
                     parc = veri.split("|")
                     if len(parc) >= 3:
-                        kod, madde = parc[1], parc[2]
-                        # UI'ya ana iş parçacığında dokun (Tk thread-safe değil)
-                        kok.after(0, lambda k=kod, m=madde: disaridan_ac(k, m))
+                        kok.after(0, lambda k=parc[1], m=parc[2]: ac(k, m))
             except Exception:
                 continue
 
     threading.Thread(target=kontrol_sunucusu, daemon=True).start()
-
     kok.mainloop()
 
 

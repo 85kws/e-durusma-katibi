@@ -23,9 +23,11 @@ import subprocess
 
 import numpy as np
 import sounddevice as sd
+import pyperclip
 from faster_whisper import WhisperModel
 
 import komutlar
+import adim2_mevzuat_simulator as msim   # mevzuat penceresi (ayni exe icinde)
 
 # --- Ses / model ayarları ---
 ORNEKLEME = 16000
@@ -113,6 +115,7 @@ class DikteMotoru:
         self._kuyruk = queue.Queue()
         self._stream = None
         self.sr = ORNEKLEME
+        self.mevzuat_handler = None   # GUI ayarlar; mevzuat komutunu uygular
 
     def model_yukle(self):
         if self.model is None:
@@ -201,29 +204,15 @@ class DikteMotoru:
             self.on_metin(f"🪟 [{veri}{'' if ok else ' — bulunamadı'}]")
         elif tip == "mevzuat":
             kod, madde = veri
-            komutlar.mevzuat_getir(kod, madde)
+            if self.mevzuat_handler:
+                self.mevzuat_handler(kod, madde)
+            else:
+                komutlar.mevzuat_getir(kod, madde)
             self.on_metin(f"📚 [{kod} madde {madde} yapıştırıldı]")
         else:
             komutlar.yapistir_metin(metin + " ")
             self.on_metin(metin)
         del metin
-
-
-def mevzuat_penceresi_ac():
-    """Mevzuat simülatörünü ayrı pencere/işlem olarak açar (Windows'ta ayrı .exe)."""
-    try:
-        if getattr(sys, "frozen", False):
-            # exe halinde: yanındaki UYAP_Mevzuat.exe'yi çalıştır
-            klasor = os.path.dirname(sys.executable)
-            yol = os.path.join(klasor, "UYAP_Mevzuat.exe")
-            subprocess.Popen([yol])
-        else:
-            klasor = os.path.dirname(os.path.abspath(__file__))
-            subprocess.Popen([sys.executable,
-                              os.path.join(klasor, "adim2_mevzuat_simulator.py")])
-        return True
-    except Exception:
-        return False
 
 
 # ------------------------------- ARAYÜZ -------------------------------------
@@ -251,6 +240,41 @@ def main():
     kok.geometry("560x440")
 
     motor = DikteMotoru()
+
+    # --- Mevzuat penceresi (AYNI exe içinde, Toplevel) ---
+    mevzuat = {"win": None, "ac": None}
+
+    def mevzuat_ac_pencere():
+        if mevzuat["win"] is None or not mevzuat["win"].winfo_exists():
+            mevzuat["win"] = tk.Toplevel(kok)
+            mevzuat["ac"] = msim.arayuz_kur(mevzuat["win"])
+        else:
+            mevzuat["win"].deiconify()
+            mevzuat["win"].lift()
+        return mevzuat["win"]
+
+    def mevzuat_goster(kod, madde):
+        mevzuat_ac_pencere()
+        if mevzuat["ac"]:
+            mevzuat["ac"](kod, madde)
+
+    def mevzuat_handler(kod, madde):
+        """Engine thread'inden çağrılır: editörü hatırla, mevzuatı görsel aç, panoya koy, editöre dön + yapıştır."""
+        editor = komutlar._aktif_pencere_basligi()
+        kok.after(0, lambda: mevzuat_goster(kod, madde))   # Tk'ye ana thread'de dokun
+        metin = msim.KUTUPHANE.get(kod, {}).get("maddeler", {}).get(madde, "")
+        if metin:
+            try:
+                pyperclip.copy(metin)
+            except Exception:
+                pass
+        time.sleep(1.0)                                    # hakim açılan maddeyi görsün
+        if editor:
+            komutlar.pencereye_gec(editor)
+            time.sleep(0.3)
+        komutlar._ctrl_v()
+
+    motor.mevzuat_handler = mevzuat_handler
 
     ttk.Label(kok, text="E-Duruşma Katibi", font=("Segoe UI", 15, "bold"),
               padding=10).pack()
@@ -317,7 +341,7 @@ def main():
     baslat_btn = ttk.Button(kontrol, text="▶ Başlat", command=basla_dur)
     baslat_btn.pack(side="left")
     ttk.Button(kontrol, text="📚 Mevzuat penceresini aç",
-               command=mevzuat_penceresi_ac).pack(side="left", padx=8)
+               command=mevzuat_ac_pencere).pack(side="left", padx=8)
 
     # 4) Durum + son metin
     alt = ttk.Frame(kok, padding=(14, 4)); alt.pack(fill="both", expand=True)

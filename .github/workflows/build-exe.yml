@@ -35,22 +35,12 @@ jobs:
           --collect-all tokenizers
           e_durusma_katibi.py
 
-      - name: Mevzuat penceresi EXE (UYAP_Mevzuat, tek dosya)
-        run: >
-          pyinstaller --noconfirm --onefile --noconsole --name "UYAP_Mevzuat"
-          adim2_mevzuat_simulator.py
-
-      - name: NOTLAR'i ve mevzuat exe'sini paketle
-        run: |
-          copy NOTLAR_WINDOWS.md dist\
-          copy dist\UYAP_Mevzuat.exe dist\E-DurusmaKatibi\
+      - name: NOTLAR'i pakete kopyala
+        run: copy NOTLAR_WINDOWS.md dist\E-DurusmaKatibi\
 
       - name: Paketi yukle (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: E-DurusmaKatibi-Windows
-          path: |
-            dist/E-DurusmaKatibi
-            dist/UYAP_Mevzuat.exe
-            dist/NOTLAR_WINDOWS.md
+          path: dist/E-DurusmaKatibi
           retention-days: 30
