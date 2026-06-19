@@ -34,11 +34,11 @@ ORNEKLEME = 16000
 KANAL = 1
 BLOK = 0.10
 SESSIZLIK_ESIGI = 0.020       # bu RMS altı = sessizlik (mikrofona göre ayarlanır)
-SESSIZLIK_SURESI = 0.70       # konuşma sonrası bu kadar sn sessizlik = cümle bitti
-MAX_SUR = 6.0                 # EN GEÇ bu kadar saniyede işle (uzun birikmeyi önler)
+SESSIZLIK_SURESI = 0.45       # konuşma sonrası bu kadar sn sessizlik = öbek bitti (kısa = hızlı tepki)
+MAX_SUR = 3.0                 # EN GEÇ bu kadar saniyede işle (hız için kısa)
 DIL = "tr"
-# Model: doğruluk/gürültü ↔ hız dengesi. medium (güçlü PC için) — small'dan daha doğru, gürültüde iyi.
-MODEL_BOYUTU = "medium"
+# HIZ için "base" (CPU'da gerçek-zamana en yakın). Doğruluk için "small"/"medium" (ama yavaşlar).
+MODEL_BOYUTU = "base"
 HUKUKI_PROMPT = ("Hukuki dikte. Terimler: beraat, beraatine, sanık, müşteki, "
                  "davacı vekili, davalı, Cumhuriyet Savcısı, gereği düşünüldü, "
                  "tahliye, mahkumiyet, tazminat.")
@@ -186,7 +186,7 @@ class DikteMotoru:
             ses = _resample16k(ses, self.sr)
         # vad_filter=True: Silero VAD ile gürültü/sessizlik elenir (gürültülü ortamda daha iyi).
         # condition_on_previous_text=False: tekrar/halüsinasyonu önler.
-        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=5,
+        segs, _ = self.model.transcribe(ses, language=DIL, beam_size=1,
                                         vad_filter=True, condition_on_previous_text=False,
                                         initial_prompt=HUKUKI_PROMPT)
         metin = "".join(s.text for s in segs).strip()
@@ -210,6 +210,7 @@ class DikteMotoru:
                 komutlar.mevzuat_getir(kod, madde)
             self.on_metin(f"📚 [{kod} madde {madde} yapıştırıldı]")
         else:
+            metin = komutlar.yazim_duzelt(metin)   # bilinen yazım hatalarını düzelt
             komutlar.yapistir_metin(metin + " ")
             self.on_metin(metin)
         del metin

@@ -33,7 +33,7 @@ Sesle dikte: konuştuğun, o an açık olan yazı programına (Word/UYAP/Not Def
 - ❌ "RAM'i sıfırlıyoruz virüs okuyamaz" DEME (teknik ispatı yok).
 
 ## NOTLAR / SINIRLAR
-- Model **medium** (güçlü PC için). Çok yavaşsa: bizde `MODEL_BOYUTU="small"` yapıp yeniden derleriz.
+- Model **base** (HIZ için — CPU'da gerçek-zamana en yakın). Daha doğru isteyip biraz yavaşlığa razıysan `MODEL_BOYUTU="small"` yapıp yeniden derleriz. Tam kelime-kelime canlı yazma GPU ister; CPU'da öbek bazlı ~1-2 sn.
 - Gürültüde Silero VAD devrede; yine de çok gürültülü ortamda hata artabilir.
 - Antivirüs ilk seferde uyarabilir (klavye kullanır) → izin ver; ileride imzalama (code signing).
 - Mevzuat metinleri şimdilik TEMSİLİ örnek; gerçek metin entegrasyonu sonraki etap.

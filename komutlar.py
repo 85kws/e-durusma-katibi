@@ -52,6 +52,27 @@ PENCERE_HEDEF = [
 MEVZUAT_AKSIYON = ("kopyala", "getir", "yapıştır", "yapistir", "ekle")
 
 
+# Yazım düzeltme sözlüğü: ses tanıyıcının sık karıştırdığı kelimeler.
+# Buraya "yanlış": "doğru" ekleyerek genişletebilirsin. Tam kelime, büyük/küçük korunur.
+DUZELTMELER = {
+    "back": "bacak",
+    "berat": "beraat",
+    "beratine": "beraatine",
+    "tahliyesine": "tahliyesine",
+}
+
+
+def yazim_duzelt(metin: str) -> str:
+    """Metindeki bilinen yanlış kelimeleri düzeltir (büyük/küçük harfi korur)."""
+    def repl(m):
+        kelime = m.group(0)
+        dogru = DUZELTMELER.get(kelime.lower())
+        if not dogru:
+            return kelime
+        return dogru.capitalize() if kelime[:1].isupper() else dogru
+    return re.sub(r"[A-Za-zÇĞİıÖŞÜçğöşü]+", repl, metin)
+
+
 def komut_coz(metin: str):
     """metin -> (tip, veri). tip: 'enter' | 'pencere' | 'mevzuat' | None."""
     s = metin.lower().strip(" .,!?;:\n\t")
