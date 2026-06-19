@@ -205,6 +205,8 @@ class DikteMotoru:
         metin = "".join(s.text for s in segs).strip()
         if not metin:
             return
+        if komutlar.halusinasyon_mu(metin):   # "Altyazı M.K." gibi uydurmaları yazma
+            return
         tip, veri = komutlar.komut_coz(metin)
         if tip == "enter":
             komutlar.enter_gonder(); self.on_metin("↵ [yeni paragraf]")

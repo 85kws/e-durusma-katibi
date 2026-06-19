@@ -73,6 +73,23 @@ def yazim_duzelt(metin: str) -> str:
     return re.sub(r"[A-Za-zÇĞİıÖŞÜçğöşü]+", repl, metin)
 
 
+# Whisper'ın sessizlik/gürültüde uydurduğu çöp ifadeler (YouTube altyazı kalıntısı).
+HALUSINASYON = [
+    "altyazı m.k", "altyazi m.k", "altyazı m. k", "m.k.", "altyazı", "altyazi",
+    "abone ol", "kanalıma abone", "izlediğiniz için teşekkür",
+    "bir sonraki video", "altyazı için", "altyazılar", "teşekkürler izlediğiniz",
+]
+
+
+def halusinasyon_mu(metin: str) -> bool:
+    """Whisper'ın sessizlikte ürettiği çöp metin mi? (yazılmamalı)"""
+    s = metin.lower().strip(" .,!?;:")
+    for h in HALUSINASYON:
+        if h in s:
+            return True
+    return False
+
+
 def komut_coz(metin: str):
     """metin -> (tip, veri). tip: 'enter' | 'pencere' | 'mevzuat' | None."""
     s = metin.lower().strip(" .,!?;:\n\t")
