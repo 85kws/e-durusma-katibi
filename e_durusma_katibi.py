@@ -33,9 +33,9 @@ import adim2_mevzuat_simulator as msim   # mevzuat penceresi (ayni exe icinde)
 ORNEKLEME = 16000
 KANAL = 1
 BLOK = 0.10
-SESSIZLIK_ESIGI = 0.020       # bu RMS altı = sessizlik (mikrofona göre ayarlanır)
-SESSIZLIK_SURESI = 0.45       # konuşma sonrası bu kadar sn sessizlik = öbek bitti (kısa = hızlı tepki)
-MAX_SUR = 3.0                 # EN GEÇ bu kadar saniyede işle (hız için kısa)
+SESSIZLIK_ESIGI = 0.018       # bu RMS altı = sessizlik (mikrofona göre ayarlanır)
+SESSIZLIK_SURESI = 0.80       # konuşma sonrası bu kadar sn sessizlik = CÜMLE bitti (tam cümle yakala)
+MAX_SUR = 15.0                # güvenlik tavanı (cümle çok uzarsa); normalde duraklamada işler
 DIL = "tr"
 # "small" = iyi denge (güçlü PC'de hızlı + doğru). Çok yavaşsa "base", çok güçlüyse "medium".
 MODEL_BOYUTU = "small"
@@ -164,6 +164,8 @@ class DikteMotoru:
                 self._kuyruk.put(indata.copy())
 
     def _dongu(self):
+        import collections
+        onroll = collections.deque(maxlen=max(1, int(0.30 / BLOK)))  # konuşma başını kaçırma (0.3s ön-tampon)
         biriken, sessiz, konusuldu = [], 0, False
         gereken = max(1, int(SESSIZLIK_SURESI / BLOK))
         max_blok = max(gereken + 1, int(MAX_SUR / BLOK))
@@ -174,10 +176,18 @@ class DikteMotoru:
                 continue
             seviye = float(np.sqrt(np.mean(np.square(blok))))
             if seviye >= SESSIZLIK_ESIGI:
-                konusuldu = True; sessiz = 0; biriken.append(blok)
-            elif konusuldu:
-                sessiz += 1; biriken.append(blok)
-            # İşle: yeterli sessizlik VEYA en fazla MAX_SUR doldu (uzun birikmeyi önler)
+                if not konusuldu:
+                    biriken.extend(onroll)   # konuşma öncesi tampon -> ilk hece kesilmesin
+                    onroll.clear()
+                konusuldu = True; sessiz = 0
+                biriken.append(blok)
+            else:
+                if konusuldu:
+                    sessiz += 1
+                    biriken.append(blok)
+                else:
+                    onroll.append(blok)      # sessizken son anları sakla (ön-tampon)
+            # İşle: gerçek duraklama (CÜMLE sonu) VEYA güvenlik tavanı (uzun birikme)
             if konusuldu and (sessiz >= gereken or len(biriken) >= max_blok):
                 ses = np.concatenate(biriken).flatten().astype(np.float32)
                 biriken, sessiz, konusuldu = [], 0, False
